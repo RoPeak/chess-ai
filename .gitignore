@@ -1,2 +1,5 @@
 # Ignore Maven output folder
 /target
+
+# Ignore .vscode folder
+/.vscode
