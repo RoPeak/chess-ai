@@ -5,15 +5,20 @@ import java.util.List;
 import java.util.ArrayList;
 
 // Custom imports
-import pieces.PieceColour;
-import pieces.PiecePosition;
-import pieces.King;
-import pieces.Piece;
+import pieces.*;
 
 public class Gameplay {
+
+    @FunctionalInterface
+    public interface PromotionCallback {
+        Piece choose(PieceColour colour, PiecePosition position);
+    }
+
     private Board board;
     private boolean whiteTurn = true;
     private PiecePosition selectedPiecePosition;
+    private PiecePosition enPassantTarget = null;
+    private PromotionCallback promotionCallback = null;
 
     public Gameplay() {
         this.board = new Board();
@@ -23,70 +28,125 @@ public class Gameplay {
         return this.board;
     }
 
+    public void setPromotionCallback(PromotionCallback callback) {
+        this.promotionCallback = callback;
+    }
+
+    public PromotionCallback getPromotionCallback() {
+        return this.promotionCallback;
+    }
+
     public boolean makeMove(PiecePosition start, PiecePosition end) {
         Piece movingPiece = board.getPiece(start.getRow(), start.getCol());
-        
-        // Ensure space is not empty or piece is wrong colour
-        if (movingPiece == null || movingPiece.getColour() != (whiteTurn ? PieceColour.WHITE : PieceColour.BLACK)) {
+
+        // Ensure piece exists and belongs to current player
+        if (movingPiece == null || movingPiece.getColour() != getCurrentPlayerColour()) {
             return false;
         }
 
-        // Ensure desired move is valid for this given piece
-        if (movingPiece.isValidMove(end, board.getBoard())) {
-            // Move piece and swap turn
-            board.movePiece(start, end);
-            whiteTurn = !whiteTurn;
-
-            return true;
+        // Validate against the legal move list (already filtered for check)
+        List<PiecePosition> legal = getLegalMovesForPiece(start);
+        if (!legal.contains(end)) {
+            return false;
         }
 
-        // Incorrect move if no condition has been met
-        return false;
+        // En passant capture: remove the captured pawn before moving
+        if (movingPiece instanceof Pawn && enPassantTarget != null && end.equals(enPassantTarget)) {
+            board.setPiece(start.getRow(), end.getCol(), null);
+        }
+
+        // Castling: also move the rook
+        if (movingPiece instanceof King) {
+            int colDiff = end.getCol() - start.getCol();
+            if (Math.abs(colDiff) == 2) {
+                int rookFromCol = colDiff > 0 ? 7 : 0;
+                int rookToCol   = colDiff > 0 ? 5 : 3;
+                Rook rook = (Rook) board.getPiece(start.getRow(), rookFromCol);
+                board.setPiece(start.getRow(), rookToCol, rook);
+                board.setPiece(start.getRow(), rookFromCol, null);
+                rook.markMoved();
+            }
+            ((King) movingPiece).markMoved();
+        }
+
+        if (movingPiece instanceof Rook) {
+            ((Rook) movingPiece).markMoved();
+        }
+
+        // Track en passant target for next move
+        PiecePosition nextEnPassantTarget = null;
+        if (movingPiece instanceof Pawn) {
+            int rowDiff = end.getRow() - start.getRow();
+            if (Math.abs(rowDiff) == 2) {
+                nextEnPassantTarget = new PiecePosition(start.getRow() + rowDiff / 2, start.getCol());
+            }
+        }
+
+        // Perform the move
+        board.setPiece(end.getRow(), end.getCol(), movingPiece);
+        board.setPiece(start.getRow(), start.getCol(), null);
+        enPassantTarget = nextEnPassantTarget;
+
+        // Pawn promotion
+        if (movingPiece instanceof Pawn) {
+            boolean promotes = (movingPiece.getColour() == PieceColour.WHITE && end.getRow() == 0)
+                            || (movingPiece.getColour() == PieceColour.BLACK && end.getRow() == 7);
+            if (promotes) {
+                Piece promoted = handlePromotion(end, movingPiece.getColour());
+                board.setPiece(end.getRow(), end.getCol(), promoted);
+            }
+        }
+
+        whiteTurn = !whiteTurn;
+        return true;
+    }
+
+    private Piece handlePromotion(PiecePosition position, PieceColour colour) {
+        if (promotionCallback != null) {
+            return promotionCallback.choose(colour, position);
+        }
+        return new Queen(colour, position);
     }
 
     private PiecePosition findKingPosition(PieceColour kingColour) {
-        // Iterate through the board and find the given coloured king
-        for (int row = 0; row < board.getBoard().length; row++) {
-            for (int col = 0; col < board.getBoard()[row].length; col++) {
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
                 Piece piece = board.getPiece(row, col);
                 if (piece instanceof King && piece.getColour() == kingColour) {
                     return new PiecePosition(row, col);
                 }
-            } 
+            }
         }
         throw new RuntimeException("King not on board");
     }
 
     private boolean isPositionOnBoard(PiecePosition position) {
-        // Return whether the given position is a valid position in our 2D grid
-        return position.getRow() >= 0 && position.getRow() < board.getBoard().length 
-        && position.getCol() >= 0 && position.getCol() < board.getBoard()[0].length;
+        return position.getRow() >= 0 && position.getRow() < 8
+            && position.getCol() >= 0 && position.getCol() < 8;
     }
 
     public boolean isInCheck(PieceColour kingColour) {
         // Iterate through each square, checking if that piece is checking the king
         PiecePosition kingPosition = findKingPosition(kingColour);
-        for (int row = 0; row < board.getBoard().length; row++) {
-            for (int col = 0; col < board.getBoard()[row].length; col++) {
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
                 Piece piece = board.getPiece(row, col);
                 if (piece != null && piece.getColour() != kingColour) {
                     if (piece.isValidMove(kingPosition, board.getBoard())) {
-                        // A piece of the opposite colour is able to capture the king (!)
                         return true;
                     }
                 }
             }
         }
-        // No piece checking the king was found
         return false;
     }
 
-    private boolean wouldBeInCheckAfterMove(PieceColour kingColour, PiecePosition from, PiecePosition to) {
+    private boolean wouldBeInCheckAfterMove(PieceColour colour, PiecePosition from, PiecePosition to) {
         // Simulate move
         Piece temp = board.getPiece(to.getRow(), to.getCol());
         board.setPiece(to.getRow(), to.getCol(), board.getPiece(from.getRow(), from.getCol()));
         board.setPiece(from.getRow(), from.getCol(), null);
-        boolean inCheck = isInCheck(kingColour);
+        boolean inCheck = isInCheck(colour);
 
         // Undo move
         board.setPiece(from.getRow(), from.getCol(), board.getPiece(to.getRow(), to.getCol()));
@@ -95,46 +155,57 @@ public class Gameplay {
         return inCheck;
     }
 
-    public boolean isCheckmate(PieceColour kingColour) {
-        if (!isInCheck(kingColour)) {
-            // Not in check so not checkmate
-            return false;
+    private boolean wouldBeInCheckAfterEnPassant(PieceColour colour, PiecePosition from, PiecePosition to) {
+        // Temporarily remove the captured pawn (same row as moving pawn, same col as landing square)
+        int capturedRow = from.getRow();
+        int capturedCol = to.getCol();
+        Piece capturedPawn = board.getPiece(capturedRow, capturedCol);
+        board.setPiece(capturedRow, capturedCol, null);
+        boolean inCheck = wouldBeInCheckAfterMove(colour, from, to);
+        board.setPiece(capturedRow, capturedCol, capturedPawn);
+        return inCheck;
+    }
+
+    private boolean canCastle(PieceColour colour, boolean kingSide) {
+        int row = (colour == PieceColour.WHITE) ? 7 : 0;
+        Piece kingPiece = board.getPiece(row, 4);
+        if (!(kingPiece instanceof King) || ((King) kingPiece).hasMoved()) return false;
+        if (isInCheck(colour)) return false;
+
+        if (kingSide) {
+            Piece rook = board.getPiece(row, 7);
+            if (!(rook instanceof Rook) || ((Rook) rook).hasMoved()) return false;
+            if (board.getPiece(row, 5) != null || board.getPiece(row, 6) != null) return false;
+            PiecePosition kingPos = new PiecePosition(row, 4);
+            if (wouldBeInCheckAfterMove(colour, kingPos, new PiecePosition(row, 5))) return false;
+            if (wouldBeInCheckAfterMove(colour, kingPos, new PiecePosition(row, 6))) return false;
+        } else {
+            Piece rook = board.getPiece(row, 0);
+            if (!(rook instanceof Rook) || ((Rook) rook).hasMoved()) return false;
+            if (board.getPiece(row, 1) != null || board.getPiece(row, 2) != null || board.getPiece(row, 3) != null) return false;
+            PiecePosition kingPos = new PiecePosition(row, 4);
+            if (wouldBeInCheckAfterMove(colour, kingPos, new PiecePosition(row, 3))) return false;
+            if (wouldBeInCheckAfterMove(colour, kingPos, new PiecePosition(row, 2))) return false;
         }
-
-        // Select the king
-        PiecePosition kingPosition = findKingPosition(kingColour);
-        King king = (King) board.getPiece(kingPosition.getRow(), kingPosition.getCol());
-
-        // Attempt to find a move that gets the king out of check
-        for (int rowOffSet = -1; rowOffSet <= 1; rowOffSet++) {
-            for (int colOffSet = -1; colOffSet <= 1; colOffSet++) {
-                if (rowOffSet == 0 && colOffSet == 0) {
-                    // Skip current king position
-                    continue;
-                }
-                
-                // Check if this new move is valid and does not result in check
-                PiecePosition newPosition = new PiecePosition(kingPosition.getRow() + rowOffSet, kingPosition.getCol() + colOffSet);
-                if (isPositionOnBoard(newPosition) && king.isValidMove(newPosition, board.getBoard())
-                    && !wouldBeInCheckAfterMove(kingColour, kingPosition, newPosition)) {
-                        // Appropriate move found, so not checkmate
-                        return false;
-                }
-            }
-        }
-
-        // No legal moves available, game over
         return true;
     }
 
+    public boolean isCheckmate(PieceColour colour) {
+        return isInCheck(colour) && getAllLegalMoves(colour).isEmpty();
+    }
+
+    public boolean isStalemate(PieceColour colour) {
+        return !isInCheck(colour) && getAllLegalMoves(colour).isEmpty();
+    }
+
     public void resetGame() {
-        // Re-initialise board and reset turn to white
         this.board = new Board();
         this.whiteTurn = true;
+        this.enPassantTarget = null;
+        this.selectedPiecePosition = null;
     }
 
     public PieceColour getCurrentPlayerColour() {
-        // Return White or Black depending on who's turn it is
         return whiteTurn ? PieceColour.WHITE : PieceColour.BLACK;
     }
 
@@ -143,47 +214,31 @@ public class Gameplay {
     }
 
     public boolean handleSquareSelection(int row, int col) {
-        // If no piece is selected, this click will likely be to
-        // try and select one - only if there is a piece on this square
-        // AND it is the current player's colour
         if (selectedPiecePosition == null) {
             Piece selectedPiece = board.getPiece(row, col);
             if (selectedPiece != null && selectedPiece.getColour() == getCurrentPlayerColour()) {
                 selectedPiecePosition = new PiecePosition(row, col);
-                // Indicate that a piece has been selected but not moved
                 return false;
             }
-        } 
-        // If a piece has been selected, this click will likely be to move it
-        else {
-            // Attempt to make move, reset the selected piece regardless of result,
-            // then return success/failure
+        } else {
             boolean moveMade = makeMove(selectedPiecePosition, new PiecePosition(row, col));
-            selectedPiecePosition = null; 
+            selectedPiecePosition = null;
             return moveMade;
         }
-
-        // Return false if no accepting condition was met
         return false;
     }
 
     private void addLineMoves(PiecePosition position, int[][] directions, List<PiecePosition> legalMoves) {
         // Computes legal moves along straight and diagonal lines by iterating through specified directions
-        // from the given position, until a blocking piece or the board edge is reached 
-        for (int[] d: directions) {
+        // from the given position, until a blocking piece or the board edge is reached
+        for (int[] d : directions) {
             PiecePosition newPos = new PiecePosition(position.getRow() + d[0], position.getCol() + d[1]);
             while (isPositionOnBoard(newPos)) {
                 if (board.getPiece(newPos.getRow(), newPos.getCol()) == null) {
-                    // Empty square in path = legal move has been found
                     legalMoves.add(new PiecePosition(newPos.getRow(), newPos.getCol()));
-
-                    // Move on to next square in sequence
                     newPos = new PiecePosition(newPos.getRow() + d[0], newPos.getCol() + d[1]);
-                } 
-                // For mon-empty squares, check if it is a capturable piece
-                else {
+                } else {
                     if (board.getPiece(newPos.getRow(), newPos.getCol()).getColour() != board.getPiece(position.getRow(), position.getCol()).getColour()) {
-                        // Piece of opposing colour reached = legal move has been found
                         legalMoves.add(newPos);
                     }
                     break;
@@ -193,57 +248,47 @@ public class Gameplay {
     }
 
     public void addSingleMoves(PiecePosition position, int[][] moves, List<PiecePosition> legalMoves) {
-        // Computes legal single moves by iterating through specified directions
-        // from the given position, until a blocking piece or the board edge is reached 
+        // Computes legal single-step moves, skipping squares off the board or occupied by a friendly piece
         for (int[] move : moves) {
             PiecePosition newPos = new PiecePosition(position.getRow() + move[0], position.getCol() + move[1]);
-            
-            // If this is a valid square on the board that is either empty or contains a piece of the opposite colour,
-            // then it is a legal move
-            if (isPositionOnBoard(newPos) && (board.getPiece(newPos.getRow(), newPos.getCol()) == null || 
-                board.getPiece(newPos.getRow(), newPos.getCol()).getColour() != board.getPiece(position.getRow(), position.getCol()).getColour())) {
-                    legalMoves.add(newPos);
-                }
+            if (isPositionOnBoard(newPos) && (board.getPiece(newPos.getRow(), newPos.getCol()) == null
+                || board.getPiece(newPos.getRow(), newPos.getCol()).getColour() != board.getPiece(position.getRow(), position.getCol()).getColour())) {
+                legalMoves.add(newPos);
+            }
         }
     }
 
     public void addPawnMoves(PiecePosition position, PieceColour colour, List<PiecePosition> legalMoves) {
-        // Pawns are slightly more complex to compute as they can take either one or two moves depending on
-        // whether they have already moved.
-        // They also capture diagonally i.e. a direction different to how they move
         int direction = colour == PieceColour.WHITE ? -1 : 1;
 
-        // Generate move
-        PiecePosition newPos = new PiecePosition(position.getRow() + direction, position.getCol());
-        
-        // Conditions for a standard single move (valid board position and square ahead is free)
-        if (isPositionOnBoard(newPos) && board.getPiece(newPos.getRow(), newPos.getCol()) == null) {
-            legalMoves.add(newPos);
-        }
+        // Single push
+        PiecePosition singlePush = new PiecePosition(position.getRow() + direction, position.getCol());
+        if (isPositionOnBoard(singlePush) && board.getPiece(singlePush.getRow(), singlePush.getCol()) == null) {
+            legalMoves.add(singlePush);
 
-        // Conditions for a double move (valid board position, pawn has not moved, and 2 squares ahead are free)
-        // This is only checked if the pawn has not moved before
-        if ((colour == PieceColour.WHITE && position.getRow() == 6) || (colour == PieceColour.BLACK && position.getRow() == 1)) {
-            newPos = new PiecePosition(position.getRow() + 2 * direction, position.getCol());
-            PiecePosition middleStep = new PiecePosition(position.getRow() + direction, position.getCol());
-
-            // Valid board position and no pieces blocking = legal move found
-            if (isPositionOnBoard(newPos) && board.getPiece(newPos.getRow(), newPos.getCol()) == null 
-                && board.getPiece(middleStep.getRow(), middleStep.getCol()) == null) {
-                    legalMoves.add(newPos);
+            // Double push from starting rank (only if single push was clear)
+            if ((colour == PieceColour.WHITE && position.getRow() == 6)
+                    || (colour == PieceColour.BLACK && position.getRow() == 1)) {
+                PiecePosition doublePush = new PiecePosition(position.getRow() + 2 * direction, position.getCol());
+                if (isPositionOnBoard(doublePush) && board.getPiece(doublePush.getRow(), doublePush.getCol()) == null) {
+                    legalMoves.add(doublePush);
+                }
             }
         }
 
-        // Conditions for a capture (valid board position and there is an opposing piece on a diagonal square)
-        // Determine the two possible spaces for capture - edge case of one of them not being on the board
-        int[] captureCols = {position.getCol() -1, position.getCol() + 1};
-        for (int col : captureCols) {
-            newPos = new PiecePosition(position.getRow() + direction, col);
-            // If either space is on the board and has an opposing piece on it = legal move found
-            if (isPositionOnBoard(newPos) && board.getPiece(newPos.getRow(), newPos.getCol()) != null 
-                && board.getPiece(newPos.getRow(), newPos.getCol()).getColour() != colour) {
-                    legalMoves.add(newPos);
-                }
+        // Diagonal captures (including en passant)
+        for (int dc : new int[]{-1, 1}) {
+            PiecePosition capturePos = new PiecePosition(position.getRow() + direction, position.getCol() + dc);
+            if (!isPositionOnBoard(capturePos)) continue;
+
+            Piece target = board.getPiece(capturePos.getRow(), capturePos.getCol());
+            if (target != null && target.getColour() != colour) {
+                // Normal diagonal capture
+                legalMoves.add(capturePos);
+            } else if (capturePos.equals(enPassantTarget)) {
+                // En passant capture
+                legalMoves.add(capturePos);
+            }
         }
     }
 
@@ -255,29 +300,66 @@ public class Gameplay {
             return new ArrayList<>();
         }
 
-        // Determine which piece is selected and then add the legal moves to an ArrayList
-        // based on 2D grid coords
-        List<PiecePosition> legalMoves = new ArrayList<>();
+        // Generate candidate moves based on piece type
+        List<PiecePosition> rawMoves = new ArrayList<>();
+        PieceColour colour = selectedPiece.getColour();
+
         switch (selectedPiece.getClass().getSimpleName()) {
             case "Pawn":
-                addPawnMoves(position, selectedPiece.getColour(), legalMoves);
+                addPawnMoves(position, colour, rawMoves);
                 break;
             case "Rook":
-                addLineMoves(position, new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}, legalMoves);
+                addLineMoves(position, new int[][]{{1,0},{-1,0},{0,1},{0,-1}}, rawMoves);
                 break;
             case "Knight":
-                addSingleMoves(position, new int[][]{{2,1}, {2,-1}, {-2, 1}, {-2, -1}, {1, 2}, {-1, 2}, {1, -2}, {-1, -2}}, legalMoves);
+                addSingleMoves(position, new int[][]{{2,1},{2,-1},{-2,1},{-2,-1},{1,2},{-1,2},{1,-2},{-1,-2}}, rawMoves);
                 break;
             case "Bishop":
-                addLineMoves(position, new int[][]{{1,1}, {-1,-1}, {1,-1}, {-1,1}}, legalMoves);
+                addLineMoves(position, new int[][]{{1,1},{-1,-1},{1,-1},{-1,1}}, rawMoves);
                 break;
             case "Queen":
-                addLineMoves(position, new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}}, legalMoves);
+                addLineMoves(position, new int[][]{{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,-1},{1,-1},{-1,1}}, rawMoves);
                 break;
             case "King":
-                addSingleMoves(position, new int[][]{{1,0}, {-1,0}, {0,1},{0,-1}, {1,1}, {-1,-1}, {1,-1}, {-1,1}}, legalMoves);
+                addSingleMoves(position, new int[][]{{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,-1},{1,-1},{-1,1}}, rawMoves);
+                if (canCastle(colour, true))  rawMoves.add(new PiecePosition(position.getRow(), 6));
+                if (canCastle(colour, false)) rawMoves.add(new PiecePosition(position.getRow(), 2));
                 break;
         }
+
+        // Filter out any move that leaves the king in check
+        List<PiecePosition> legalMoves = new ArrayList<>();
+        for (PiecePosition move : rawMoves) {
+            boolean inCheck;
+            if (selectedPiece instanceof Pawn && enPassantTarget != null && move.equals(enPassantTarget)) {
+                inCheck = wouldBeInCheckAfterEnPassant(colour, position, move);
+            } else {
+                inCheck = wouldBeInCheckAfterMove(colour, position, move);
+            }
+            if (!inCheck) legalMoves.add(move);
+        }
+
         return legalMoves;
     }
+
+    public List<int[]> getAllLegalMoves(PieceColour colour) {
+        // Returns {fromRow, fromCol, toRow, toCol} for every legal move for the given colour
+        List<int[]> moves = new ArrayList<>();
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                Piece piece = board.getPiece(row, col);
+                if (piece != null && piece.getColour() == colour) {
+                    PiecePosition from = new PiecePosition(row, col);
+                    for (PiecePosition to : getLegalMovesForPiece(from)) {
+                        moves.add(new int[]{row, col, to.getRow(), to.getCol()});
+                    }
+                }
+            }
+        }
+        return moves;
+    }
+
+    // Expose en passant state for the AI to save/restore during search
+    public PiecePosition getEnPassantTarget() { return enPassantTarget; }
+    public void setEnPassantTarget(PiecePosition target) { enPassantTarget = target; }
 }

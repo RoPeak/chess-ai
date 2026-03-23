@@ -38,10 +38,27 @@ public class ChessGUI extends JFrame {
         setTitle("Chess Game");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new GridLayout(8, 8));
+        registerPromotionCallback();
         initialiseBoard();
         addGameResetOption();
         pack();
         setVisible(true);
+    }
+
+    private void registerPromotionCallback() {
+        game.setPromotionCallback((colour, position) -> {
+            String[] options = {"Queen", "Rook", "Bishop", "Knight"};
+            int choice = JOptionPane.showOptionDialog(
+                this, "Choose promotion piece:", "Pawn Promotion",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
+                null, options, options[0]);
+            return switch (choice) {
+                case 1 -> new Rook(colour, position);
+                case 2 -> new Bishop(colour, position);
+                case 3 -> new Knight(colour, position);
+                default -> new Queen(colour, position);
+            };
+        });
     }
 
     private void initialiseBoard() {
@@ -51,7 +68,7 @@ public class ChessGUI extends JFrame {
                 final int finalRow = row;
                 final int finalCol = col;
                 ChessSquareComponent square = new ChessSquareComponent(row, col);
-                
+
                 square.addMouseListener(new MouseAdapter() {
                     @Override
                     public void mouseClicked(MouseEvent e) {
@@ -76,14 +93,10 @@ public class ChessGUI extends JFrame {
             for (int col = 0; col < 8; col++) {
                 Piece piece = board.getPiece(row, col);
                 if (piece != null) {
-                    // Piece found, retrieve appropriate symbol and colour
                     String symbol = pieceMap.get(piece.getClass());
                     Color colour = (piece.getColour() == PieceColour.WHITE) ? Color.WHITE : Color.BLUE;
-                    
-                    // Update squares grid
                     squares[row][col].setPieceSymbol(symbol, colour);
                 } else {
-                    // Empty square
                     squares[row][col].clearPieceSymbol();
                 }
             }
@@ -91,51 +104,55 @@ public class ChessGUI extends JFrame {
     }
 
     private void handleSquareClick(int row, int col) {
-        // This method bridges user interactions with game logic
-        // by determining whether a move has been made and then updating
-        // the board
         boolean moveResult = game.handleSquareSelection(row, col);
         clearHighlights();
 
-        // If a move was made, refresh and check game state
         if (moveResult) {
             refreshBoard();
             checkGameState();
             checkGameOver();
-        } 
-        // If no move was made but a piece was selected, highlight it's legal moves
-        else if (game.isPieceSelected()) {
+        } else if (game.isPieceSelected()) {
             highlightLegalMoves(new PiecePosition(row, col));
         }
         refreshBoard();
     }
 
-
     private void checkGameState() {
-        // This method shows the user dialog based on game conditions
         PieceColour currentPlayer = game.getCurrentPlayerColour();
-        boolean inCheck = game.isInCheck(currentPlayer);
-
-        if (inCheck) {
+        if (game.isInCheck(currentPlayer)) {
             JOptionPane.showMessageDialog(this, currentPlayer + " is in check.");
         }
     }
 
-    private void checkGameOver() {
-        // Check if the game is over, displaying options to replay if so
-        if (game.isCheckmate(game.getCurrentPlayerColour())) {
-            int response = JOptionPane.showConfirmDialog(this, "Checkmate! Would you like to play again?", "Game Over", JOptionPane.YES_NO_OPTION);
+    private boolean checkGameOver() {
+        PieceColour currentPlayer = game.getCurrentPlayerColour();
+
+        if (game.isCheckmate(currentPlayer)) {
+            int response = JOptionPane.showConfirmDialog(this,
+                "Checkmate! Would you like to play again?", "Game Over", JOptionPane.YES_NO_OPTION);
             if (response == JOptionPane.YES_OPTION) {
                 resetGame();
             } else {
                 System.exit(0);
             }
+            return true;
         }
+
+        if (game.isStalemate(currentPlayer)) {
+            int response = JOptionPane.showConfirmDialog(this,
+                "Stalemate! It's a draw. Would you like to play again?", "Game Over", JOptionPane.YES_NO_OPTION);
+            if (response == JOptionPane.YES_OPTION) {
+                resetGame();
+            } else {
+                System.exit(0);
+            }
+            return true;
+        }
+
+        return false;
     }
 
     private void highlightLegalMoves(PiecePosition position) {
-        // Provide visual indication to the user of which moves
-        // can be made with selected piece
         List<PiecePosition> legalMoves = game.getLegalMovesForPiece(position);
         for (PiecePosition move : legalMoves) {
             squares[move.getRow()][move.getCol()].setBackground(Color.GREEN);
@@ -143,7 +160,6 @@ public class ChessGUI extends JFrame {
     }
 
     private void clearHighlights() {
-        // Clear the board of highlights by redrawing the checker pattern
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 squares[row][col].setBackground((row + col) % 2 == 0 ? Color.LIGHT_GRAY : Color.BLACK);
@@ -152,7 +168,6 @@ public class ChessGUI extends JFrame {
     }
 
     private void addGameResetOption() {
-        // Give the user an option to reset the game
         JMenuBar menuBar = new JMenuBar();
         JMenu gameMenu = new JMenu("Game");
         JMenuItem resetItem = new JMenuItem("Reset");
@@ -164,7 +179,6 @@ public class ChessGUI extends JFrame {
     }
 
     private void resetGame() {
-        // Call reset game and refresh board
         game.resetGame();
         refreshBoard();
     }

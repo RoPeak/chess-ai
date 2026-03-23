@@ -1,9 +1,14 @@
 package pieces;
 
 public class Rook extends Piece {
+    private boolean hasMoved = false;
+
     public Rook(PieceColour colour, PiecePosition position) {
         super(colour, position);
     }
+
+    public boolean hasMoved() { return hasMoved; }
+    public void markMoved()   { hasMoved = true; }
 
     @Override
     public boolean isValidMove(PiecePosition newPosition, Piece[][] board) {
