@@ -25,7 +25,7 @@ public class Board {
         board[0][0] = new Rook(PieceColour.BLACK, new PiecePosition(0, 0));
         board[0][7] = new Rook(PieceColour.BLACK, new PiecePosition(0, 7));
         board[7][0] = new Rook(PieceColour.WHITE, new PiecePosition(7, 0));
-        board[7][7] = new Rook(PieceColour.WHITE, new PiecePosition(0, 0));
+        board[7][7] = new Rook(PieceColour.WHITE, new PiecePosition(7, 7));
 
 
         board[0][1] = new Knight(PieceColour.BLACK, new PiecePosition(0, 1));

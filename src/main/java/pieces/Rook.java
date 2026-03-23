@@ -33,7 +33,7 @@ public class Rook extends Piece {
             int rowEnd = Math.max(position.getRow(), newPosition.getRow());
 
             // Ensure that the path is clear
-            for (int row = rowStart; row < rowEnd; row++) {
+            for (int row = rowStart + 1; row < rowEnd; row++) {
                 if (board[row][position.getCol()] != null) {
                     // Piece is in the way
                     return false;

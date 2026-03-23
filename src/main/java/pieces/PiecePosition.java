@@ -16,4 +16,16 @@ public class PiecePosition {
     public int getCol() {
         return this.col;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof PiecePosition other)) return false;
+        return row == other.row && col == other.col;
+    }
+
+    @Override
+    public int hashCode() {
+        return 8 * row + col;
+    }
 }
