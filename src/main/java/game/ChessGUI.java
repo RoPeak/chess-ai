@@ -455,7 +455,7 @@ public class ChessGUI extends JFrame {
 
         if (game.isCheckmate(current)) {
             String msg = game.isAiMode()
-                ? (current == PieceColour.WHITE ? "Checkmate — the AI wins!" : "Checkmate — you win!")
+                ? (current == PieceColour.WHITE ? "Checkmate - the AI wins!" : "Checkmate - you win!")
                 : "Checkmate! " + current + " loses.";
             int response = JOptionPane.showConfirmDialog(this,
                 msg + "\nPlay again?", "Game Over", JOptionPane.YES_NO_OPTION);
