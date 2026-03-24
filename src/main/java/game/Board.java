@@ -84,4 +84,29 @@ public class Board {
             piece.setPosition(new PiecePosition(row, col));
         }
     }
+
+    // Low-level move helpers for the AI's undo-based search.
+    // These do NOT trigger special move logic (castling, en passant, promotion) —
+    // ChessAI handles those side effects itself.
+
+    public Piece simulateMove(int fromRow, int fromCol, int toRow, int toCol) {
+        Piece captured = board[toRow][toCol];
+        board[toRow][toCol] = board[fromRow][fromCol];
+        board[fromRow][fromCol] = null;
+        if (board[toRow][toCol] != null) {
+            board[toRow][toCol].setPosition(new PiecePosition(toRow, toCol));
+        }
+        return captured;
+    }
+
+    public void undoSimulatedMove(int fromRow, int fromCol, int toRow, int toCol, Piece captured) {
+        board[fromRow][fromCol] = board[toRow][toCol];
+        board[toRow][toCol] = captured;
+        if (board[fromRow][fromCol] != null) {
+            board[fromRow][fromCol].setPosition(new PiecePosition(fromRow, fromCol));
+        }
+        if (captured != null) {
+            captured.setPosition(new PiecePosition(toRow, toCol));
+        }
+    }
 }

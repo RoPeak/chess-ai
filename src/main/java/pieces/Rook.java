@@ -7,8 +7,9 @@ public class Rook extends Piece {
         super(colour, position);
     }
 
-    public boolean hasMoved() { return hasMoved; }
-    public void markMoved()   { hasMoved = true; }
+    public boolean hasMoved()              { return hasMoved; }
+    public void markMoved()                { hasMoved = true; }
+    public void setHasMoved(boolean value) { hasMoved = value; }
 
     @Override
     public boolean isValidMove(PiecePosition newPosition, Piece[][] board) {
