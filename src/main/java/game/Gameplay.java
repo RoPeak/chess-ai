@@ -227,6 +227,10 @@ public class Gameplay {
         return selectedPiecePosition != null;
     }
 
+    public PiecePosition getSelectedPosition() {
+        return selectedPiecePosition;
+    }
+
     public boolean handleSquareSelection(int row, int col) {
         if (selectedPiecePosition == null) {
             Piece selectedPiece = board.getPiece(row, col);
