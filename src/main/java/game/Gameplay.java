@@ -235,8 +235,21 @@ public class Gameplay {
                 return false;
             }
         } else {
+            PiecePosition previousSelection = selectedPiecePosition;
             boolean moveMade = makeMove(selectedPiecePosition, new PiecePosition(row, col));
             selectedPiecePosition = null;
+
+            if (!moveMade) {
+                // If the user clicked a different friendly piece, re-select it rather than
+                // leaving them with nothing selected (clicking the same square deselects)
+                Piece clicked = board.getPiece(row, col);
+                boolean isDifferentFriendly = clicked != null
+                    && clicked.getColour() == getCurrentPlayerColour()
+                    && !new PiecePosition(row, col).equals(previousSelection);
+                if (isDifferentFriendly) {
+                    selectedPiecePosition = new PiecePosition(row, col);
+                }
+            }
             return moveMade;
         }
         return false;

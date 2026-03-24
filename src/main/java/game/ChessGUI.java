@@ -13,31 +13,31 @@ import pieces.*;
 
 
 public class ChessGUI extends JFrame {
-    private static final Color LIGHT_SQUARE = new Color(240, 217, 181);
-    private static final Color DARK_SQUARE  = new Color(181, 136,  99);
+    private static final Color LIGHT_SQUARE = ChessSquareComponent.LIGHT;
+    private static final Color DARK_SQUARE  = ChessSquareComponent.DARK;
     private static final Color HIGHLIGHT    = new Color(130, 190,  60);
+    private static final Color SELECTED     = new Color(200, 200,  80);
 
     private final ChessSquareComponent[][] squares = new ChessSquareComponent[8][8];
     private final Gameplay game = new Gameplay();
     private final JLabel statusBar = new JLabel(" ", SwingConstants.CENTER);
 
-    // Unicode chess glyphs — white pieces, then black pieces
-    private static final Map<Class<? extends Piece>, String> WHITE_SYMBOLS = new HashMap<>() {{
-        put(King.class,   "\u2654");
-        put(Queen.class,  "\u2655");
-        put(Rook.class,   "\u2656");
-        put(Bishop.class, "\u2657");
-        put(Knight.class, "\u2658");
-        put(Pawn.class,   "\u2659");
+    // Unicode chess glyphs — only used when the system font supports them
+    private static final Map<Class<? extends Piece>, String> WHITE_UNICODE = new HashMap<>() {{
+        put(King.class,   "\u2654"); put(Queen.class,  "\u2655"); put(Rook.class,   "\u2656");
+        put(Bishop.class, "\u2657"); put(Knight.class, "\u2658"); put(Pawn.class,   "\u2659");
     }};
-    private static final Map<Class<? extends Piece>, String> BLACK_SYMBOLS = new HashMap<>() {{
-        put(King.class,   "\u265A");
-        put(Queen.class,  "\u265B");
-        put(Rook.class,   "\u265C");
-        put(Bishop.class, "\u265D");
-        put(Knight.class, "\u265E");
-        put(Pawn.class,   "\u265F");
+    private static final Map<Class<? extends Piece>, String> BLACK_UNICODE = new HashMap<>() {{
+        put(King.class,   "\u265A"); put(Queen.class,  "\u265B"); put(Rook.class,   "\u265C");
+        put(Bishop.class, "\u265D"); put(Knight.class, "\u265E"); put(Pawn.class,   "\u265F");
     }};
+    // ASCII fallback (colour is conveyed by foreground colour)
+    private static final Map<Class<? extends Piece>, String> LETTER_SYMBOLS = new HashMap<>() {{
+        put(King.class, "K"); put(Queen.class, "Q"); put(Rook.class, "R");
+        put(Bishop.class, "B"); put(Knight.class, "N"); put(Pawn.class, "P");
+    }};
+
+    private final boolean useUnicode = ChessSquareComponent.canDisplayChessGlyphs();
 
     // Current difficulty depth (default medium)
     private int currentDepth = 3;
@@ -94,6 +94,7 @@ public class ChessGUI extends JFrame {
                 squares[row][col] = square;
             }
         }
+        clearHighlights(); // ensure warm colours from the start
         refreshBoard();
     }
 
@@ -153,10 +154,7 @@ public class ChessGUI extends JFrame {
             for (int col = 0; col < 8; col++) {
                 Piece piece = board.getPiece(row, col);
                 if (piece != null) {
-                    Map<Class<? extends Piece>, String> symbols =
-                        piece.getColour() == PieceColour.WHITE ? WHITE_SYMBOLS : BLACK_SYMBOLS;
-                    String symbol = symbols.getOrDefault(piece.getClass(), "?");
-                    // Render white pieces in a dark colour so they show on the light square
+                    String symbol = getPieceSymbol(piece);
                     Color fg = piece.getColour() == PieceColour.WHITE
                         ? new Color(30, 30, 30) : new Color(180, 40, 40);
                     squares[row][col].setPieceSymbol(symbol, fg);
@@ -177,6 +175,15 @@ public class ChessGUI extends JFrame {
         List<PiecePosition> legalMoves = game.getLegalMovesForPiece(position);
         for (PiecePosition move : legalMoves)
             squares[move.getRow()][move.getCol()].setBackground(HIGHLIGHT);
+    }
+
+    private String getPieceSymbol(Piece piece) {
+        if (useUnicode) {
+            Map<Class<? extends Piece>, String> map =
+                piece.getColour() == PieceColour.WHITE ? WHITE_UNICODE : BLACK_UNICODE;
+            return map.getOrDefault(piece.getClass(), "?");
+        }
+        return LETTER_SYMBOLS.getOrDefault(piece.getClass(), "?");
     }
 
     private void updateStatusBar() {
@@ -217,6 +224,7 @@ public class ChessGUI extends JFrame {
                 return;
             }
         } else if (game.isPieceSelected()) {
+            squares[row][col].setBackground(SELECTED);
             highlightLegalMoves(new PiecePosition(row, col));
         }
         refreshBoard();
@@ -266,8 +274,14 @@ public class ChessGUI extends JFrame {
 
     private void checkGameState() {
         PieceColour current = game.getCurrentPlayerColour();
-        if (game.isInCheck(current)) {
-            String who = game.isAiMode() && current == PieceColour.WHITE ? "You are" : current + " is";
+        // Only show "in check" if it's not already checkmate (checkGameOver handles that separately)
+        if (game.isInCheck(current) && !game.isCheckmate(current)) {
+            String who;
+            if (game.isAiMode()) {
+                who = current == PieceColour.WHITE ? "You are" : "The AI is";
+            } else {
+                who = current + " is";
+            }
             JOptionPane.showMessageDialog(this, who + " in check.");
         }
     }

@@ -54,22 +54,6 @@ public class Board {
         }
     }
 
-    public void movePiece(PiecePosition start, PiecePosition end) {
-        // Check if there is a piece at the start position
-        // and that the move is valid
-        if (board[start.getRow()][start.getCol()] != null && 
-            board[start.getRow()][start.getCol()].isValidMove(end, board)) {
-                // Perform the move - place piece at end position
-                board[end.getRow()][end.getCol()] = board[start.getRow()][start.getCol()];
-                
-                // Update piece's position
-                board[end.getRow()][end.getCol()].setPosition(end);
-
-                // Clear start position
-                board[start.getRow()][start.getCol()] = null;
-            }
-    }
-
     public Piece[][] getBoard() {
         return this.board;
     }
