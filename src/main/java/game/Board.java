@@ -19,7 +19,7 @@ public class Board {
         setupPieces();
     }
 
-    public void setupPieces() {
+    private void setupPieces() {
         // Initialise all piece placements
         // Rook placement
         board[0][0] = new Rook(PieceColour.BLACK, new PiecePosition(0, 0));

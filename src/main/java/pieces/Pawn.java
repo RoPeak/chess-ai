@@ -41,7 +41,8 @@ public class Pawn extends Piece {
             return true;
         }
 
-        // TODO: Implement en passant? 
+        // En passant is handled in Gameplay.addPawnMoves / makeMove, not here.
+        // isValidMove is only used for check detection, where en passant never applies.
 
         // Invalid move if no other conditions have been met
         return false;
