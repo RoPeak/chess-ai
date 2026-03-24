@@ -19,6 +19,9 @@ public class Gameplay {
     private PiecePosition selectedPiecePosition;
     private PiecePosition enPassantTarget = null;
     private PromotionCallback promotionCallback = null;
+    private boolean aiMode = false;
+    private int aiDepth = 3;
+    private ChessAI ai = null;
 
     public Gameplay() {
         this.board = new Board();
@@ -198,11 +201,22 @@ public class Gameplay {
         return !isInCheck(colour) && getAllLegalMoves(colour).isEmpty();
     }
 
+    public void setAiMode(boolean enabled, int depth) {
+        this.aiMode  = enabled;
+        this.aiDepth = depth;
+        this.ai      = enabled ? new ChessAI(this, depth) : null;
+    }
+
+    public boolean isAiMode() { return aiMode; }
+    public ChessAI getAI()    { return ai; }
+
     public void resetGame() {
         this.board = new Board();
         this.whiteTurn = true;
         this.enPassantTarget = null;
         this.selectedPiecePosition = null;
+        // Rebuild AI instance so it works against the fresh board
+        if (aiMode) ai = new ChessAI(this, aiDepth);
     }
 
     public PieceColour getCurrentPlayerColour() {

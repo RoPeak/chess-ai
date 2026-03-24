@@ -4,46 +4,67 @@ package game;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.List;
 
 // Custom imports
-import pieces.Piece;
-import pieces.PieceColour;
-import pieces.PiecePosition;
-import pieces.Bishop;
-import pieces.King;
-import pieces.Knight;
-import pieces.Pawn;
-import pieces.Queen;
-import pieces.Rook;
+import pieces.*;
 
 
 public class ChessGUI extends JFrame {
+    private static final Color LIGHT_SQUARE = new Color(240, 217, 181);
+    private static final Color DARK_SQUARE  = new Color(181, 136,  99);
+    private static final Color HIGHLIGHT    = new Color(130, 190,  60);
+
     private final ChessSquareComponent[][] squares = new ChessSquareComponent[8][8];
     private final Gameplay game = new Gameplay();
-    private final Map<Class<? extends Piece>, String> pieceMap = new HashMap<>() {
-        {
-            put(Pawn.class, "P");
-            put(Rook.class, "R");
-            put(Knight.class, "N");
-            put(Bishop.class, "B");
-            put(Queen.class, "Q");
-            put(King.class, "K");
-        }
-    };
+    private final JLabel statusBar = new JLabel(" ", SwingConstants.CENTER);
+
+    // Unicode chess glyphs — white pieces, then black pieces
+    private static final Map<Class<? extends Piece>, String> WHITE_SYMBOLS = new HashMap<>() {{
+        put(King.class,   "\u2654");
+        put(Queen.class,  "\u2655");
+        put(Rook.class,   "\u2656");
+        put(Bishop.class, "\u2657");
+        put(Knight.class, "\u2658");
+        put(Pawn.class,   "\u2659");
+    }};
+    private static final Map<Class<? extends Piece>, String> BLACK_SYMBOLS = new HashMap<>() {{
+        put(King.class,   "\u265A");
+        put(Queen.class,  "\u265B");
+        put(Rook.class,   "\u265C");
+        put(Bishop.class, "\u265D");
+        put(Knight.class, "\u265E");
+        put(Pawn.class,   "\u265F");
+    }};
+
+    // Current difficulty depth (default medium)
+    private int currentDepth = 3;
 
     public ChessGUI() {
-        setTitle("Chess Game");
+        setTitle("Chess AI");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new GridLayout(8, 8));
+        setLayout(new BorderLayout());
+
+        JPanel boardPanel = new JPanel(new GridLayout(8, 8));
+        initialiseBoard(boardPanel);
+        add(boardPanel, BorderLayout.CENTER);
+
+        statusBar.setFont(statusBar.getFont().deriveFont(14f));
+        statusBar.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        add(statusBar, BorderLayout.SOUTH);
+
         registerPromotionCallback();
-        initialiseBoard();
-        addGameResetOption();
+        addMenuBar();
+        updateStatusBar();
         pack();
         setVisible(true);
     }
+
+    // -------------------------------------------------------------------------
+    // Initialisation
+    // -------------------------------------------------------------------------
 
     private void registerPromotionCallback() {
         game.setPromotionCallback((colour, position) -> {
@@ -61,41 +82,84 @@ public class ChessGUI extends JFrame {
         });
     }
 
-    private void initialiseBoard() {
-        // Initialise each square of the board to be a component with a mouse listener
-        for (int row = 0; row < squares.length; row++) {
-            for (int col = 0; col < squares[row].length; col++) {
-                final int finalRow = row;
-                final int finalCol = col;
+    private void initialiseBoard(JPanel boardPanel) {
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                final int r = row, c = col;
                 ChessSquareComponent square = new ChessSquareComponent(row, col);
-
                 square.addMouseListener(new MouseAdapter() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-                        handleSquareClick(finalRow, finalCol);
-                    }
+                    @Override public void mouseClicked(MouseEvent e) { handleSquareClick(r, c); }
                 });
-
-                add(square);
+                boardPanel.add(square);
                 squares[row][col] = square;
             }
         }
-
-        // Draw the board
         refreshBoard();
     }
 
+    private void addMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu gameMenu = new JMenu("Game");
+
+        // Reset
+        JMenuItem resetItem = new JMenuItem("Reset");
+        resetItem.addActionListener(e -> resetGame());
+        gameMenu.add(resetItem);
+
+        gameMenu.addSeparator();
+
+        // AI toggle
+        JCheckBoxMenuItem aiItem = new JCheckBoxMenuItem("AI Opponent");
+        aiItem.addActionListener(e -> {
+            game.setAiMode(aiItem.isSelected(), currentDepth);
+            updateStatusBar();
+            // If AI is now on and it's black's turn, trigger the AI immediately
+            if (aiItem.isSelected() && game.getCurrentPlayerColour() == PieceColour.BLACK) {
+                triggerAIMove();
+            }
+        });
+        gameMenu.add(aiItem);
+
+        gameMenu.addSeparator();
+
+        // Difficulty sub-menu
+        JMenu diffMenu = new JMenu("Difficulty");
+        ButtonGroup group = new ButtonGroup();
+        String[][] levels = {{"Easy", "2"}, {"Medium", "3"}, {"Hard", "4"}};
+        for (String[] level : levels) {
+            JRadioButtonMenuItem item = new JRadioButtonMenuItem(level[0]);
+            if (level[0].equals("Medium")) item.setSelected(true);
+            int d = Integer.parseInt(level[1]);
+            item.addActionListener(e -> {
+                currentDepth = d;
+                if (game.isAiMode()) game.setAiMode(true, currentDepth);
+            });
+            group.add(item);
+            diffMenu.add(item);
+        }
+        gameMenu.add(diffMenu);
+
+        menuBar.add(gameMenu);
+        setJMenuBar(menuBar);
+    }
+
+    // -------------------------------------------------------------------------
+    // Board display
+    // -------------------------------------------------------------------------
+
     private void refreshBoard() {
-        // Iterate over every square, checking for piece presence
-        // then use the map to update that square with the appropriate symbol
         Board board = game.getBoard();
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
                 Piece piece = board.getPiece(row, col);
                 if (piece != null) {
-                    String symbol = pieceMap.get(piece.getClass());
-                    Color colour = (piece.getColour() == PieceColour.WHITE) ? Color.WHITE : Color.BLUE;
-                    squares[row][col].setPieceSymbol(symbol, colour);
+                    Map<Class<? extends Piece>, String> symbols =
+                        piece.getColour() == PieceColour.WHITE ? WHITE_SYMBOLS : BLACK_SYMBOLS;
+                    String symbol = symbols.getOrDefault(piece.getClass(), "?");
+                    // Render white pieces in a dark colour so they show on the light square
+                    Color fg = piece.getColour() == PieceColour.WHITE
+                        ? new Color(30, 30, 30) : new Color(180, 40, 40);
+                    squares[row][col].setPieceSymbol(symbol, fg);
                 } else {
                     squares[row][col].clearPieceSymbol();
                 }
@@ -103,83 +167,140 @@ public class ChessGUI extends JFrame {
         }
     }
 
+    private void clearHighlights() {
+        for (int row = 0; row < 8; row++)
+            for (int col = 0; col < 8; col++)
+                squares[row][col].setBackground((row + col) % 2 == 0 ? LIGHT_SQUARE : DARK_SQUARE);
+    }
+
+    private void highlightLegalMoves(PiecePosition position) {
+        List<PiecePosition> legalMoves = game.getLegalMovesForPiece(position);
+        for (PiecePosition move : legalMoves)
+            squares[move.getRow()][move.getCol()].setBackground(HIGHLIGHT);
+    }
+
+    private void updateStatusBar() {
+        if (game.isAiMode()) {
+            String turn = game.getCurrentPlayerColour() == PieceColour.WHITE ? "Your turn (White)" : "AI is thinking...";
+            statusBar.setText(turn);
+        } else {
+            String turn = game.getCurrentPlayerColour() == PieceColour.WHITE ? "White's turn" : "Black's turn";
+            statusBar.setText(turn);
+        }
+    }
+
+    private void setSquaresEnabled(boolean enabled) {
+        for (int row = 0; row < 8; row++)
+            for (int col = 0; col < 8; col++)
+                squares[row][col].setEnabled(enabled);
+    }
+
+    // -------------------------------------------------------------------------
+    // Click handling
+    // -------------------------------------------------------------------------
+
     private void handleSquareClick(int row, int col) {
+        // Ignore clicks while it's the AI's turn
+        if (game.isAiMode() && game.getCurrentPlayerColour() == PieceColour.BLACK) return;
+
         boolean moveResult = game.handleSquareSelection(row, col);
         clearHighlights();
 
         if (moveResult) {
             refreshBoard();
             checkGameState();
-            checkGameOver();
+            if (checkGameOver()) return;
+            updateStatusBar();
+
+            if (game.isAiMode() && game.getCurrentPlayerColour() == PieceColour.BLACK) {
+                triggerAIMove();
+                return;
+            }
         } else if (game.isPieceSelected()) {
             highlightLegalMoves(new PiecePosition(row, col));
         }
         refreshBoard();
     }
 
+    // -------------------------------------------------------------------------
+    // AI
+    // -------------------------------------------------------------------------
+
+    private void triggerAIMove() {
+        statusBar.setText("AI is thinking...");
+        setSquaresEnabled(false);
+
+        new SwingWorker<int[], Void>() {
+            @Override
+            protected int[] doInBackground() {
+                return game.getAI().getBestMove();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    int[] m = get();
+                    if (m != null) {
+                        // Suppress the promotion dialog for AI — it always queens (default)
+                        Gameplay.PromotionCallback saved = game.getPromotionCallback();
+                        game.setPromotionCallback(null);
+                        game.makeMove(new PiecePosition(m[0], m[1]), new PiecePosition(m[2], m[3]));
+                        game.setPromotionCallback(saved);
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                } finally {
+                    refreshBoard();
+                    checkGameState();
+                    checkGameOver();
+                    updateStatusBar();
+                    setSquaresEnabled(true);
+                }
+            }
+        }.execute();
+    }
+
+    // -------------------------------------------------------------------------
+    // Game state checks
+    // -------------------------------------------------------------------------
+
     private void checkGameState() {
-        PieceColour currentPlayer = game.getCurrentPlayerColour();
-        if (game.isInCheck(currentPlayer)) {
-            JOptionPane.showMessageDialog(this, currentPlayer + " is in check.");
+        PieceColour current = game.getCurrentPlayerColour();
+        if (game.isInCheck(current)) {
+            String who = game.isAiMode() && current == PieceColour.WHITE ? "You are" : current + " is";
+            JOptionPane.showMessageDialog(this, who + " in check.");
         }
     }
 
     private boolean checkGameOver() {
-        PieceColour currentPlayer = game.getCurrentPlayerColour();
+        PieceColour current = game.getCurrentPlayerColour();
 
-        if (game.isCheckmate(currentPlayer)) {
+        if (game.isCheckmate(current)) {
+            String msg = game.isAiMode()
+                ? (current == PieceColour.WHITE ? "Checkmate — the AI wins!" : "Checkmate — you win!")
+                : "Checkmate! " + current + " loses.";
             int response = JOptionPane.showConfirmDialog(this,
-                "Checkmate! Would you like to play again?", "Game Over", JOptionPane.YES_NO_OPTION);
-            if (response == JOptionPane.YES_OPTION) {
-                resetGame();
-            } else {
-                System.exit(0);
-            }
+                msg + "\nPlay again?", "Game Over", JOptionPane.YES_NO_OPTION);
+            if (response == JOptionPane.YES_OPTION) resetGame();
+            else System.exit(0);
             return true;
         }
 
-        if (game.isStalemate(currentPlayer)) {
+        if (game.isStalemate(current)) {
             int response = JOptionPane.showConfirmDialog(this,
-                "Stalemate! It's a draw. Would you like to play again?", "Game Over", JOptionPane.YES_NO_OPTION);
-            if (response == JOptionPane.YES_OPTION) {
-                resetGame();
-            } else {
-                System.exit(0);
-            }
+                "Stalemate — it's a draw!\nPlay again?", "Game Over", JOptionPane.YES_NO_OPTION);
+            if (response == JOptionPane.YES_OPTION) resetGame();
+            else System.exit(0);
             return true;
         }
 
         return false;
     }
 
-    private void highlightLegalMoves(PiecePosition position) {
-        List<PiecePosition> legalMoves = game.getLegalMovesForPiece(position);
-        for (PiecePosition move : legalMoves) {
-            squares[move.getRow()][move.getCol()].setBackground(Color.GREEN);
-        }
-    }
-
-    private void clearHighlights() {
-        for (int row = 0; row < 8; row++) {
-            for (int col = 0; col < 8; col++) {
-                squares[row][col].setBackground((row + col) % 2 == 0 ? Color.LIGHT_GRAY : Color.BLACK);
-            }
-        }
-    }
-
-    private void addGameResetOption() {
-        JMenuBar menuBar = new JMenuBar();
-        JMenu gameMenu = new JMenu("Game");
-        JMenuItem resetItem = new JMenuItem("Reset");
-
-        resetItem.addActionListener(e -> resetGame());
-        gameMenu.add(resetItem);
-        menuBar.add(gameMenu);
-        setJMenuBar(menuBar);
-    }
-
     private void resetGame() {
         game.resetGame();
+        clearHighlights();
         refreshBoard();
+        updateStatusBar();
     }
 }
