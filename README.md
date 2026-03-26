@@ -2,6 +2,8 @@
 
 A Java-based chess game featuring a graphical user interface built with Swing. Play chess with complete rule enforcement and a clean, intuitive interface.
 
+![Preview](docs/images/preview.png)
+
 ## Features
 
 -  Full chess implementation with all standard rules
